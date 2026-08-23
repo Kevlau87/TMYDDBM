@@ -1,1 +1,7 @@
 .env
+data/*.duckdb
+data/*.duckdb.wal
+__marimo__/
+.venv/
+__pycache__/
+*.pyc

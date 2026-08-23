@@ -1,0 +1,14 @@
+[project]
+name = "tmyddbm"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "duckdb>=1.5.5",
+    "marimo>=0.24.0",
+    "python-dotenv>=1.2.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
