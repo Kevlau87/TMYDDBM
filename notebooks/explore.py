@@ -9,7 +9,9 @@ def _():
     import altair as alt
     import marimo as mo
 
-    return alt, mo
+    from tmyddbm.units import bar_to_psi, c_to_f, ft_to_m, km_to_mi, kmh_to_mph, m_to_ft
+
+    return alt, bar_to_psi, c_to_f, ft_to_m, km_to_mi, kmh_to_mph, m_to_ft, mo
 
 
 @app.cell
@@ -160,7 +162,7 @@ def _(mo):
     mo.md("""
     ## Efficiency vs outside temperature
 
-    `net_elevation_change_m` is surfaced so hill climbs (which cost range for
+    Net elevation change is surfaced so hill climbs (which cost range for
     reasons that have nothing to do with driving style) can be spotted rather
     than silently skewing the efficiency numbers. Use the slider to exclude
     segments with a large elevation change.
@@ -171,15 +173,28 @@ def _(mo):
 @app.cell
 def _(mo):
     elevation_filter = mo.ui.slider(
-        start=0, stop=200, value=200, step=10,
-        label="Max |net elevation change| (m)",
+        start=0, stop=650, value=650, step=25,
+        label="Max |net elevation change| (ft)",
     )
     elevation_filter
     return (elevation_filter,)
 
 
 @app.cell
-def _(alt, car_picker, con, elevation_filter, mo, range_end, range_start):
+def _(
+    alt,
+    c_to_f,
+    car_picker,
+    con,
+    elevation_filter,
+    ft_to_m,
+    km_to_mi,
+    kmh_to_mph,
+    m_to_ft,
+    mo,
+    range_end,
+    range_start,
+):
     efficiency_df = con.execute(
         """
         SELECT * FROM gold_efficiency_vs_conditions
@@ -188,34 +203,42 @@ def _(alt, car_picker, con, elevation_filter, mo, range_end, range_start):
           AND abs(net_elevation_change_m) <= ?
         ORDER BY segment_start
         """,
-        [car_picker.value, range_start, range_end, elevation_filter.value],
+        [car_picker.value, range_start, range_end, ft_to_m(elevation_filter.value)],
     ).df()
+
+    if not efficiency_df.empty:
+        efficiency_df["distance_mi"] = km_to_mi(efficiency_df["distance_km"])
+        efficiency_df["avg_speed_mph"] = kmh_to_mph(efficiency_df["avg_speed"])
+        efficiency_df["avg_outside_temp_f"] = c_to_f(efficiency_df["avg_outside_temp"])
+        efficiency_df["ascent_ft"] = m_to_ft(efficiency_df["ascent_m"])
+        efficiency_df["descent_ft"] = m_to_ft(efficiency_df["descent_m"])
+        efficiency_df["net_elevation_change_ft"] = m_to_ft(efficiency_df["net_elevation_change_m"])
 
     efficiency_chart = (
         mo.ui.altair_chart(
             alt.Chart(efficiency_df)
             .mark_circle(opacity=0.6)
             .encode(
-                x=alt.X("avg_outside_temp:Q", title="Avg outside temp (°C)"),
+                x=alt.X("avg_outside_temp_f:Q", title="Avg outside temp (\u00b0F)"),
                 y=alt.Y(
                     "rated_range_efficiency:Q",
-                    title="Rated-range consumed / km driven",
+                    title="Rated-range consumed / mile driven",
                 ),
-                size=alt.Size("avg_speed:Q", title="Avg speed"),
+                size=alt.Size("avg_speed_mph:Q", title="Avg speed (mph)"),
                 color=alt.Color(
-                    "net_elevation_change_m:Q",
-                    title="Net elevation change (m)",
+                    "net_elevation_change_ft:Q",
+                    title="Net elevation change (ft)",
                     scale=alt.Scale(scheme="redblue", domainMid=0),
                 ),
                 tooltip=[
                     "segment_start",
-                    "distance_km",
-                    "avg_speed",
-                    "avg_outside_temp",
+                    "distance_mi",
+                    "avg_speed_mph",
+                    "avg_outside_temp_f",
                     "rated_range_efficiency",
-                    "ascent_m",
-                    "descent_m",
-                    "net_elevation_change_m",
+                    "ascent_ft",
+                    "descent_ft",
+                    "net_elevation_change_ft",
                 ],
             )
             .properties(width=600, height=300)
@@ -239,7 +262,17 @@ def _(mo):
 
 
 @app.cell
-def _(car_picker, con, mo, range_end, range_start):
+def _(
+    c_to_f,
+    car_picker,
+    con,
+    km_to_mi,
+    kmh_to_mph,
+    m_to_ft,
+    mo,
+    range_end,
+    range_start,
+):
     drive_summary_df = con.execute(
         """
         SELECT
@@ -248,12 +281,12 @@ def _(car_picker, con, mo, range_end, range_start):
             segment_start,
             segment_end,
             duration_s,
-            round(distance_km, 2) AS distance_km,
-            round(avg_speed, 1) AS avg_speed,
+            distance_km,
+            avg_speed,
             max_speed,
             ascent_m,
             descent_m,
-            round(avg_outside_temp, 1) AS avg_outside_temp
+            avg_outside_temp
         FROM silver_drive_segments
         WHERE car_id = ?
           AND segment_start BETWEEN ? AND ?
@@ -261,6 +294,29 @@ def _(car_picker, con, mo, range_end, range_start):
         """,
         [car_picker.value, range_start, range_end],
     ).df()
+
+    if not drive_summary_df.empty:
+        drive_summary_df = drive_summary_df.assign(
+            distance_mi=km_to_mi(drive_summary_df["distance_km"]).round(2),
+            avg_speed_mph=kmh_to_mph(drive_summary_df["avg_speed"]).round(1),
+            max_speed_mph=kmh_to_mph(drive_summary_df["max_speed"]).round(1),
+            ascent_ft=m_to_ft(drive_summary_df["ascent_m"]).round(0),
+            descent_ft=m_to_ft(drive_summary_df["descent_m"]).round(0),
+            avg_outside_temp_f=c_to_f(drive_summary_df["avg_outside_temp"]).round(1),
+        ).drop(columns=["distance_km", "avg_speed", "max_speed", "ascent_m", "descent_m", "avg_outside_temp"])
+        drive_summary_df = drive_summary_df.rename(columns={
+            "drive_id": "Drive",
+            "segment_id": "Segment",
+            "segment_start": "Start",
+            "segment_end": "End",
+            "duration_s": "Duration (s)",
+            "distance_mi": "Distance (mi)",
+            "avg_speed_mph": "Avg speed (mph)",
+            "max_speed_mph": "Max speed (mph)",
+            "ascent_ft": "Ascent (ft)",
+            "descent_ft": "Descent (ft)",
+            "avg_outside_temp_f": "Avg outside temp (\u00b0F)",
+        })
 
     drive_summary_table = (
         mo.ui.table(drive_summary_df)
@@ -339,7 +395,7 @@ def _(mo):
 
 
 @app.cell
-def _(alt, car_picker, con, mo, range_end, range_start):
+def _(alt, bar_to_psi, c_to_f, car_picker, con, mo, range_end, range_start):
     tire_df = con.execute(
         """
         SELECT * FROM gold_tire_pressure_trends
@@ -351,15 +407,18 @@ def _(alt, car_picker, con, mo, range_end, range_start):
     ).df()
 
     if not tire_df.empty:
+        tire_df["pressure_psi"] = bar_to_psi(tire_df["pressure"])
+        tire_df["outside_temp_f"] = c_to_f(tire_df["outside_temp"])
+
         _last_points = tire_df.sort_values("date").groupby("tire", as_index=False).tail(1)
         _line = (
             alt.Chart(tire_df)
             .mark_line(point=True)
             .encode(
                 x=alt.X("date:T", title="Date"),
-                y=alt.Y("pressure:Q", title="Pressure (bar)", scale=alt.Scale(zero=False)),
+                y=alt.Y("pressure_psi:Q", title="Pressure (psi)", scale=alt.Scale(zero=False)),
                 color=alt.Color("tire:N", title="Tire", scale=alt.Scale(scheme="tableau10")),
-                tooltip=["date", "tire", "pressure"],
+                tooltip=["date", "tire", "pressure_psi"],
             )
         )
         _labels = (
@@ -367,7 +426,7 @@ def _(alt, car_picker, con, mo, range_end, range_start):
             .mark_text(align="left", dx=6, fontSize=11)
             .encode(
                 x="date:T",
-                y="pressure:Q",
+                y="pressure_psi:Q",
                 color=alt.Color("tire:N", legend=None, scale=alt.Scale(scheme="tableau10")),
                 text="tire:N",
             )
@@ -388,10 +447,10 @@ def _(alt, mo, tire_df):
             alt.Chart(tire_df)
             .mark_circle(opacity=0.5)
             .encode(
-                x=alt.X("outside_temp:Q", title="Outside temp (°C)"),
-                y=alt.Y("pressure:Q", title="Pressure (bar)", scale=alt.Scale(zero=False)),
+                x=alt.X("outside_temp_f:Q", title="Outside temp (\u00b0F)"),
+                y=alt.Y("pressure_psi:Q", title="Pressure (psi)", scale=alt.Scale(zero=False)),
                 color=alt.Color("tire:N", title="Tire", scale=alt.Scale(scheme="tableau10")),
-                tooltip=["date", "tire", "pressure", "outside_temp"],
+                tooltip=["date", "tire", "pressure_psi", "outside_temp_f"],
             )
             .properties(width=600, height=300)
         )
@@ -457,7 +516,16 @@ def _(mo):
 
 
 @app.cell
-def _(alt, car_picker, con, min_battery_pct, mo, range_end, range_start):
+def _(
+    alt,
+    car_picker,
+    con,
+    km_to_mi,
+    min_battery_pct,
+    mo,
+    range_end,
+    range_start,
+):
     battery_health_df = con.execute(
         """
         SELECT * FROM gold_battery_health
@@ -469,6 +537,11 @@ def _(alt, car_picker, con, min_battery_pct, mo, range_end, range_start):
         [car_picker.value, range_start, range_end, min_battery_pct.value],
     ).df()
 
+    if not battery_health_df.empty:
+        battery_health_df["implied_full_rated_range_mi"] = km_to_mi(
+            battery_health_df["implied_full_rated_range_km"]
+        )
+
     battery_health_chart = (
         mo.ui.altair_chart(
             alt.Chart(battery_health_df)
@@ -476,11 +549,11 @@ def _(alt, car_picker, con, min_battery_pct, mo, range_end, range_start):
             .encode(
                 x=alt.X("end_date:T", title="Charge completed"),
                 y=alt.Y(
-                    "implied_full_rated_range_km:Q",
-                    title="Implied full-charge rated range (km)",
+                    "implied_full_rated_range_mi:Q",
+                    title="Implied full-charge rated range (mi)",
                     scale=alt.Scale(zero=False),
                 ),
-                tooltip=["end_date", "end_battery_level", "implied_full_rated_range_km"],
+                tooltip=["end_date", "end_battery_level", "implied_full_rated_range_mi"],
             )
             .properties(width=600, height=300)
         )

@@ -60,6 +60,17 @@ state-change deltas against battery-level deltas over time. Treat this as
 the core interesting problem of the project — don't shortcut it with
 assumptions.
 
+## Units
+
+TeslaMate stores everything internally in metric (km, km/h, Celsius, bar) —
+this is a storage convention, not a user preference, and holds regardless
+of TeslaMate's own display settings. The SQL/gold layer stays in those
+native units on purpose, so column names stay unambiguous for any future
+querying (including marimo pair sessions). Conversion to US customary
+(miles, mph, °F, psi) happens only at display time in the notebook, via
+`src/tmyddbm/units.py` — never bake a silent unit conversion into a SQL
+view or rename a column to imply a different unit than it actually holds.
+
 ## Explicit non-goals for v1
 
 - No external traffic API. If a proxy for traffic is needed later, it's
