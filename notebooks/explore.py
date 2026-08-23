@@ -1,5 +1,6 @@
 import marimo
 
+__generated_with = "0.24.0"
 app = marimo.App(width="medium")
 
 
@@ -13,7 +14,9 @@ def _():
 
 @app.cell
 def _(mo):
-    mo.md("# Tesla telemetry explorer")
+    mo.md("""
+    # Tesla telemetry explorer
+    """)
     return
 
 
@@ -64,7 +67,9 @@ def _(con, mo):
 
 @app.cell
 def _(mo):
-    mo.md("## Charge rate vs battery %")
+    mo.md("""
+    ## Charge rate vs battery %
+    """)
     return
 
 
@@ -106,7 +111,9 @@ def _(alt, car_picker, con, date_range, mo):
 
 @app.cell
 def _(mo):
-    mo.md("## Efficiency vs outside temperature")
+    mo.md("""
+    ## Efficiency vs outside temperature
+    """)
     return
 
 
@@ -152,7 +159,9 @@ def _(alt, car_picker, con, date_range, mo):
 
 @app.cell
 def _(mo):
-    mo.md("## Battery drain by category")
+    mo.md("""
+    ## Battery drain by category
+    """)
     return
 
 
