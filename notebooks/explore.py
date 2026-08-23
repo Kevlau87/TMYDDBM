@@ -48,6 +48,27 @@ def _(car_names, car_picker, mo):
 
 
 @app.cell
+def _(mo):
+    refresh_button = mo.ui.refresh(
+        options=["10s", "30s", "1m", "2m", "5m"],
+        default_interval="30s",
+        label="Auto-refresh",
+    )
+    refresh_button
+    return (refresh_button,)
+
+
+@app.cell
+def _(mo):
+    auto_extend = mo.ui.checkbox(
+        value=True,
+        label="Auto-extend end date to latest data",
+    )
+    auto_extend
+    return (auto_extend,)
+
+
+@app.cell
 def _(con, mo):
     date_bounds = con.execute(
         "SELECT min(date), max(date) FROM teslamate.public.positions"
@@ -64,11 +85,20 @@ def _(con, mo):
 
 
 @app.cell
-def _(date_range, has_bounds):
+def _(auto_extend, con, date_range, has_bounds, refresh_button):
     from datetime import datetime, time
 
+    _ = refresh_button.value  # re-run this cell (and everything downstream) on each tick
+
     range_start = datetime.combine(date_range.value[0], time.min) if has_bounds else None
-    range_end = datetime.combine(date_range.value[1], time.max) if has_bounds else None
+
+    if has_bounds and auto_extend.value:
+        _latest = con.execute("SELECT max(date) FROM teslamate.public.positions").fetchone()[0]
+        range_end = _latest
+    elif has_bounds:
+        range_end = datetime.combine(date_range.value[1], time.max)
+    else:
+        range_end = None
     return range_end, range_start
 
 
@@ -194,6 +224,50 @@ def _(alt, car_picker, con, elevation_filter, mo, range_end, range_start):
         else mo.md("*No completed drive segments in this range yet.*")
     )
     efficiency_chart
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Drive summary
+
+    Distance, duration, speed, and elevation change per drive leg (legs split
+    on stops longer than two minutes -- see silver_drive_segments).
+    """)
+    return
+
+
+@app.cell
+def _(car_picker, con, mo, range_end, range_start):
+    drive_summary_df = con.execute(
+        """
+        SELECT
+            drive_id,
+            segment_id,
+            segment_start,
+            segment_end,
+            duration_s,
+            round(distance_km, 2) AS distance_km,
+            round(avg_speed, 1) AS avg_speed,
+            max_speed,
+            ascent_m,
+            descent_m,
+            round(avg_outside_temp, 1) AS avg_outside_temp
+        FROM silver_drive_segments
+        WHERE car_id = ?
+          AND segment_start BETWEEN ? AND ?
+        ORDER BY segment_start DESC
+        """,
+        [car_picker.value, range_start, range_end],
+    ).df()
+
+    drive_summary_table = (
+        mo.ui.table(drive_summary_df)
+        if not drive_summary_df.empty
+        else mo.md("*No completed drives in this range yet.*")
+    )
+    drive_summary_table
     return
 
 
