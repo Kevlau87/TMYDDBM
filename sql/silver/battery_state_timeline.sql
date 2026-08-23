@@ -6,8 +6,14 @@
 -- phantom drain and climate-while-parked live. This view is the raw
 -- material for that: every position ping (regardless of drive_id), paired
 -- with whichever `states` interval it falls inside, so battery-level deltas
--- can be attributed to a state (driving/charging/parked/asleep/online/...)
--- rather than assumed.
+-- can be attributed to a state rather than assumed.
+--
+-- is_driving/is_charging are derived independently of `states.state`: on
+-- the first real dataset this ran against, `states` never actually emitted
+-- 'driving' or 'charging' -- it stayed 'online' through an entire real
+-- drive and charge. Relying on `state` alone would silently misattribute
+-- both. is_driving comes straight from drive_id; is_charging comes from
+-- whether the ping falls inside a charging_processes window for the car.
 --
 -- This is deliberately NOT pre-aggregated into sessions -- the point is to
 -- keep ping-level granularity (timestamp, lat/lng, battery_level, climate
@@ -18,6 +24,13 @@ CREATE OR REPLACE VIEW silver_battery_state_timeline AS
 SELECT
     p.car_id,
     s.state,
+    p.drive_id IS NOT NULL AS is_driving,
+    EXISTS (
+        SELECT 1 FROM teslamate.public.charging_processes cp
+        WHERE cp.car_id = p.car_id
+          AND p.date >= cp.start_date
+          AND (cp.end_date IS NULL OR p.date <= cp.end_date)
+    ) AS is_charging,
     p.date,
     p.battery_level,
     p.usable_battery_level,

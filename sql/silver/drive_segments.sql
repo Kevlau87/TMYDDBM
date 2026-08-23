@@ -8,6 +8,14 @@
 -- Position-level fields (lat/lng, timestamps) are preserved per segment so
 -- this can still be joined against external data (e.g. weather-by-location-
 -- and-time) later without going back to raw positions.
+--
+-- TeslaMate occasionally tags the position that marks a drive's transition
+-- into charging with the outgoing drive_id, speed=NULL, and the just-
+-- started charge's battery_level -- a boundary artifact, not a real driving
+-- sample. Confirmed narrow (1 row out of 1639 drive-linked positions on the
+-- first real dataset this ran against) rather than filtered blindly.
+-- Included, it corrupts end-of-drive battery/range readings (observed: a
+-- drive whose battery level appeared to jump +33% due to exactly this).
 
 CREATE OR REPLACE VIEW silver_drive_segments AS
 WITH ordered_positions AS (
@@ -18,7 +26,7 @@ WITH ordered_positions AS (
         LAG(p.speed) OVER (PARTITION BY p.drive_id ORDER BY p.date) AS prev_speed
     FROM teslamate.public.positions p
     JOIN teslamate.public.drives d ON d.id = p.drive_id
-    WHERE p.drive_id IS NOT NULL
+    WHERE p.drive_id IS NOT NULL AND p.speed IS NOT NULL
 ),
 flagged AS (
     SELECT
