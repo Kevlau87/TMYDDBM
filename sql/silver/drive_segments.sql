@@ -39,6 +39,14 @@ segmented AS (
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS segment_id
     FROM flagged
+),
+with_elevation_delta AS (
+    SELECT
+        *,
+        elevation - LAG(elevation) OVER (
+            PARTITION BY drive_id, segment_id ORDER BY date
+        ) AS elevation_delta_m
+    FROM segmented
 )
 SELECT
     drive_id,
@@ -64,6 +72,9 @@ SELECT
     arg_min(longitude, date) AS start_lng,
     arg_max(latitude, date) AS end_lat,
     arg_max(longitude, date) AS end_lng,
+    sum(GREATEST(elevation_delta_m, 0)) AS ascent_m,
+    sum(GREATEST(-elevation_delta_m, 0)) AS descent_m,
+    arg_max(elevation, date) - arg_min(elevation, date) AS net_elevation_change_m,
     count(*) AS position_count
-FROM segmented
+FROM with_elevation_delta
 GROUP BY drive_id, car_id, segment_id;

@@ -8,6 +8,13 @@
 -- Deliberately avoids assuming a Wh/km conversion from cars.efficiency --
 -- that field's exact semantics aren't confirmed, so this stays in
 -- range-km terms, which come straight from the raw pings.
+--
+-- ascent_m/descent_m are surfaced (not baked into a corrected metric): a
+-- proper elevation adjustment needs a mass/potential-energy-to-range
+-- constant this schema doesn't give us, and guessing one would just
+-- substitute a made-up number for an honest one. Filtering or bucketing by
+-- net_elevation_change_m in the notebook is the safer way to spot hill
+-- climbs skewing the efficiency numbers.
 
 CREATE OR REPLACE VIEW gold_efficiency_vs_conditions AS
 SELECT
@@ -21,6 +28,9 @@ SELECT
     avg_speed,
     max_speed,
     avg_outside_temp,
+    ascent_m,
+    descent_m,
+    net_elevation_change_m,
     start_battery_level,
     end_battery_level,
     start_battery_level - end_battery_level AS battery_level_consumed,
