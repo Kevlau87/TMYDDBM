@@ -62,7 +62,7 @@ def _(con, mo):
         label="Date range",
     )
     date_range
-    return (date_range,)
+    return date_range, has_bounds
 
 
 @app.cell
@@ -74,7 +74,7 @@ def _(mo):
 
 
 @app.cell
-def _(alt, car_picker, con, date_range, mo):
+def _(alt, car_picker, con, mo, range_end, range_start):
     charge_df = con.execute(
         """
         SELECT * FROM gold_charge_rate_curve
@@ -82,7 +82,7 @@ def _(alt, car_picker, con, date_range, mo):
           AND date BETWEEN ? AND ?
         ORDER BY date
         """,
-        [car_picker.value, date_range.value[0], date_range.value[1]],
+        [car_picker.value, range_start, range_end],
     ).df()
 
     charge_chart = (
@@ -118,7 +118,7 @@ def _(mo):
 
 
 @app.cell
-def _(alt, car_picker, con, date_range, mo):
+def _(alt, car_picker, con, mo, range_end, range_start):
     efficiency_df = con.execute(
         """
         SELECT * FROM gold_efficiency_vs_conditions
@@ -126,7 +126,7 @@ def _(alt, car_picker, con, date_range, mo):
           AND segment_start BETWEEN ? AND ?
         ORDER BY segment_start
         """,
-        [car_picker.value, date_range.value[0], date_range.value[1]],
+        [car_picker.value, range_start, range_end],
     ).df()
 
     efficiency_chart = (
@@ -166,7 +166,7 @@ def _(mo):
 
 
 @app.cell
-def _(alt, car_picker, con, date_range, mo):
+def _(alt, car_picker, con, mo, range_end, range_start):
     drain_df = con.execute(
         """
         SELECT * FROM gold_drain_attribution
@@ -174,7 +174,7 @@ def _(alt, car_picker, con, date_range, mo):
           AND interval_start BETWEEN ? AND ?
         ORDER BY interval_start
         """,
-        [car_picker.value, date_range.value[0], date_range.value[1]],
+        [car_picker.value, range_start, range_end],
     ).df()
 
     drain_summary = (
@@ -199,6 +199,15 @@ def _(alt, car_picker, con, date_range, mo):
     )
     drain_chart
     return
+
+
+@app.cell
+def _(date_range, has_bounds):
+    from datetime import datetime, time
+
+    range_start = datetime.combine(date_range.value[0], time.min) if has_bounds else None
+    range_end = datetime.combine(date_range.value[1], time.max) if has_bounds else None
+    return range_end, range_start
 
 
 if __name__ == "__main__":
