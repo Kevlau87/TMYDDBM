@@ -10,7 +10,12 @@ SELECT
     car_id,
     date,
     outside_temp,
-    tire,
+    CASE tire
+        WHEN 'tpms_pressure_fl' THEN 'Front Left'
+        WHEN 'tpms_pressure_fr' THEN 'Front Right'
+        WHEN 'tpms_pressure_rl' THEN 'Rear Left'
+        WHEN 'tpms_pressure_rr' THEN 'Rear Right'
+    END AS tire,
     pressure
 FROM teslamate.public.positions
 UNPIVOT (

@@ -41,7 +41,9 @@ def _(con, mo):
 
 @app.cell
 def _(car_names, car_picker, mo):
-    mo.md(f"# {car_names.get(car_picker.value, 'Tesla')} — telemetry explorer")
+    mo.md(f"""
+    # {car_names.get(car_picker.value, 'Tesla')} — telemetry explorer
+    """)
     return
 
 
@@ -74,6 +76,10 @@ def _(date_range, has_bounds):
 def _(mo):
     mo.md("""
     ## Charge rate vs battery %
+
+    Power tapers down as battery % rises -- that's the charger protecting the
+    battery near full, not a bug. Each line is one charging session, traced in
+    chronological order so the taper reads as a curve.
     """)
     return
 
@@ -93,11 +99,16 @@ def _(alt, car_picker, con, mo, range_end, range_start):
     charge_chart = (
         mo.ui.altair_chart(
             alt.Chart(charge_df)
-            .mark_circle(opacity=0.6)
+            .mark_line(point=True, strokeWidth=2)
             .encode(
                 x=alt.X("battery_level:Q", title="Battery %"),
                 y=alt.Y("charger_power:Q", title="Charger power (kW)"),
-                color=alt.Color("charging_session_id:N", legend=None),
+                order=alt.Order("date:T"),
+                color=alt.Color(
+                    "charging_session_id:N",
+                    title="Session",
+                    scale=alt.Scale(scheme="tableau10"),
+                ),
                 tooltip=[
                     "date",
                     "battery_level",
@@ -190,6 +201,10 @@ def _(alt, car_picker, con, elevation_filter, mo, range_end, range_start):
 def _(mo):
     mo.md("""
     ## Battery drain by category
+
+    Signed battery % change per category, relative to zero -- bars below zero
+    added charge (charging), bars above zero consumed it (driving, phantom
+    drain while parked).
     """)
     return
 
@@ -217,9 +232,16 @@ def _(alt, car_picker, con, mo, range_end, range_start):
             alt.Chart(drain_summary)
             .mark_bar()
             .encode(
-                x=alt.X("drain_category:N", title="Category"),
-                y=alt.Y("battery_level_drop:Q", title="Total battery % consumed"),
-                color=alt.Color("drain_category:N", legend=None),
+                x=alt.X("drain_category:N", title="Category", sort="-y"),
+                y=alt.Y(
+                    "battery_level_drop:Q",
+                    title="Battery % change (negative = added charge)",
+                ),
+                color=alt.Color(
+                    "battery_level_drop:Q",
+                    scale=alt.Scale(scheme="redblue", domainMid=0),
+                    legend=None,
+                ),
             )
             .properties(width=500, height=300)
         )
@@ -233,10 +255,11 @@ def _(alt, car_picker, con, mo, range_end, range_start):
 @app.cell
 def _(mo):
     mo.md("""
-    ## Tire pressure vs outside temperature
+    ## Tire pressure over time
 
-    Cold weather drops tire pressure measurably -- this is that relationship,
-    plus the raw trend over time per tire.
+    Pressure per tire, most recent day first. Cold weather also drops pressure
+    measurably -- that relationship (below) will get more informative as more
+    of a temperature range gets logged; right now there's only one day's worth.
     """)
     return
 
@@ -253,6 +276,39 @@ def _(alt, car_picker, con, mo, range_end, range_start):
         [car_picker.value, range_start, range_end],
     ).df()
 
+    if not tire_df.empty:
+        _last_points = tire_df.sort_values("date").groupby("tire", as_index=False).tail(1)
+        _line = (
+            alt.Chart(tire_df)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("date:T", title="Date"),
+                y=alt.Y("pressure:Q", title="Pressure (bar)", scale=alt.Scale(zero=False)),
+                color=alt.Color("tire:N", title="Tire", scale=alt.Scale(scheme="tableau10")),
+                tooltip=["date", "tire", "pressure"],
+            )
+        )
+        _labels = (
+            alt.Chart(_last_points)
+            .mark_text(align="left", dx=6, fontSize=11)
+            .encode(
+                x="date:T",
+                y="pressure:Q",
+                color=alt.Color("tire:N", legend=None, scale=alt.Scale(scheme="tableau10")),
+                text="tire:N",
+            )
+        )
+        tire_pressure_over_time_chart = mo.ui.altair_chart(
+            (_line + _labels).properties(width=650, height=300)
+        )
+    else:
+        tire_pressure_over_time_chart = mo.md("*No tire pressure readings in this range yet.*")
+    tire_pressure_over_time_chart
+    return (tire_df,)
+
+
+@app.cell
+def _(alt, mo, tire_df):
     tire_pressure_vs_temp_chart = (
         mo.ui.altair_chart(
             alt.Chart(tire_df)
@@ -260,7 +316,7 @@ def _(alt, car_picker, con, mo, range_end, range_start):
             .encode(
                 x=alt.X("outside_temp:Q", title="Outside temp (°C)"),
                 y=alt.Y("pressure:Q", title="Pressure (bar)", scale=alt.Scale(zero=False)),
-                color=alt.Color("tire:N", title="Tire"),
+                color=alt.Color("tire:N", title="Tire", scale=alt.Scale(scheme="tableau10")),
                 tooltip=["date", "tire", "pressure", "outside_temp"],
             )
             .properties(width=600, height=300)
@@ -269,27 +325,6 @@ def _(alt, car_picker, con, mo, range_end, range_start):
         else mo.md("*No tire pressure readings in this range yet.*")
     )
     tire_pressure_vs_temp_chart
-    return (tire_df,)
-
-
-@app.cell
-def _(alt, mo, tire_df):
-    tire_pressure_over_time_chart = (
-        mo.ui.altair_chart(
-            alt.Chart(tire_df)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("date:T", title="Date"),
-                y=alt.Y("pressure:Q", title="Pressure (bar)", scale=alt.Scale(zero=False)),
-                color=alt.Color("tire:N", title="Tire"),
-                tooltip=["date", "tire", "pressure"],
-            )
-            .properties(width=600, height=300)
-        )
-        if not tire_df.empty
-        else mo.md("*No tire pressure readings in this range yet.*")
-    )
-    tire_pressure_over_time_chart
     return
 
 
